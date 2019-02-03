@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using Kirurobo;
 using HoloPlay;
+using Crosstales.FB;
 
 public class QuiltFileLoader : MonoBehaviour
 {
@@ -11,11 +12,17 @@ public class QuiltFileLoader : MonoBehaviour
     Quilt quilt;
     Quilt.Tiling defaultTiling;
 
-    // Use this for initialization
     void Start()
     {
-        window = FindObjectOfType<WindowController>();
-        window.OnFilesDropped += Window_OnFilesDropped;
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+        window = gameObject.AddComponent<WindowController>();
+        window.enableFileDrop = true;
+        window.enableDragMove = false;
+#endif
+        if (window != null)
+        {
+            window.OnFilesDropped += Window_OnFilesDropped;
+        }
 
         quilt = FindObjectOfType<Quilt>();
         defaultTiling = quilt.tiling;   // Tilingの初期設定
@@ -24,7 +31,8 @@ public class QuiltFileLoader : MonoBehaviour
     void Update()
     {
         // [O] キーでファイル選択ダイアログを開く
-        if (Input.GetKey(KeyCode.O)) {
+        if (Input.GetKey(KeyCode.O))
+        {
             OpenFile();
         }
     }
@@ -34,12 +42,41 @@ public class QuiltFileLoader : MonoBehaviour
     /// </summary>
     private void OpenFile()
     {
-        string path = window.ShowOpenFileDialog("Quilt images|*.png;*.jpg;*.jpeg");
-        if (!string.IsNullOrEmpty(path))
+        if (window != null)
         {
-            StartCoroutine("LoadQuiltFile", path);
+            string path = window.ShowOpenFileDialog("Quilt images|*.png;*.jpg;*.jpeg");
+            if (!string.IsNullOrEmpty(path))
+            {
+                StartCoroutine("LoadQuiltFile", path);
+            }
+        }
+        else
+        {
+            OpenFilesAsync();
         }
     }
+
+    public void OpenFilesAsync()
+    {
+        //Debug.Log("OpenFilesAsync");
+
+        ExtensionFilter[] extensions = new[] {
+                new ExtensionFilter("Image Files", "png", "jpg", "jpeg" ),
+                // new ExtensionFilter("Sound Files", "mp3", "wav" ),
+                // new ExtensionFilter("All Files", "*" ),
+            };
+
+        //string extensions = string.Empty;
+
+        FileBrowser.OpenFilesAsync("Open Files", string.Empty, extensions, true, paths =>
+        {
+            if (paths != null && paths.Length > 0)
+            {
+                StartCoroutine("LoadQuiltFile", paths[0]);
+            }
+        });
+    }
+
 
     /// <summary>
     /// ファイルがドロップされた時の処理
@@ -61,9 +98,12 @@ public class QuiltFileLoader : MonoBehaviour
     /// <returns></returns>
     IEnumerator LoadQuiltFile(string file)
     {
+        file = "file://" + file;
         Debug.Log(file);
         WWW www = new WWW(file);
         yield return www;
+        Debug.Log(www.error);
+        Debug.Log(www.texture);
 
         texture = www.texture;
         quilt.tiling = GetTilingType(texture);
@@ -82,6 +122,8 @@ public class QuiltFileLoader : MonoBehaviour
         List<Quilt.Tiling> tilingPresets = new List<Quilt.Tiling>();
         foreach (var preset in Quilt.tilingPresets)
         {
+            Debug.Log(texture.height);
+            Debug.Log(texture.width);
             if ((preset.quiltH == texture.height) && (preset.quiltW == texture.width))
             {
                 // 画像サイズがプリセットのサイズと一致すれば候補とする
